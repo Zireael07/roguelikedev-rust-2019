@@ -1,3 +1,8 @@
+// std
+use std::collections::hash_set::*;
+
+mod ppfov;
+
 // size of the map
 const MAP_WIDTH: i32 = 20;
 const MAP_HEIGHT: i32 = 20;
@@ -200,6 +205,18 @@ fn main() {
        //println!("player x {:?}", player.x);
        //println!("player y {:?}", player.y);
 	
+	//fov
+	let mut seen_set = HashSet::new();
+	//call function from other file
+	ppfov::ppfov(
+      	(player.x, player.y),
+      	5,
+      	|x, y| if x > 0 && x < 20 && y > 0 && y < 20 { map[x as usize][y as usize].block_sight } else { true },
+      	|x, y| {
+        	seen_set.insert((x, y));
+      	   },
+    	);
+	println!("{:?}", seen_set);
     }
 
     println!("You quit!");
