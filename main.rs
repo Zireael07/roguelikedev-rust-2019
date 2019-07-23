@@ -51,6 +51,59 @@ impl Entity {
 	}
     }
 
+    //dark magic in order to draw entity on top of map
+    pub fn draw(&self, map: &mut String) -> String {
+	// +1 added to self.y and self.x due to a weird print offset
+        let mut lines = map.lines();
+	let mut count_l = 0;
+        let mut map_line=String::new();
+	//this gives string slices
+        for l in lines {
+	     count_l += 1;
+	     if count_l == (self.y+1) as usize {
+		//println!("Count_l = y {}", self.y);
+		map_line = l.to_string();
+		break;
+	     }
+	}
+	// based on https://stackoverflow.com/questions/26544542/modifying-chars-in-a-string-by-index?noredirect=1&lq=1
+        let mut result = String::with_capacity(map.len());
+        let mut count = 0;
+	count_l = 0;
+	let mut lines = map.lines();
+
+	for l in lines {
+	    count_l += 1;
+	    if count_l != (self.y+1) as usize {
+		result.push_str(l);
+		//linebreak
+		result.push('\n');
+	    }
+	    else {
+		if !map_line.is_empty() {
+            	    let mut chars = map_line.chars();
+
+            	    for c in chars {
+            		count += 1;
+	    		if count == (self.x+1) as usize {
+				result.push(self.char);
+	    		}
+	    		else{
+            			result.push(c);
+	    		}
+           	   }
+    		}
+		//linebreak
+		result.push('\n');
+	    }
+	}
+
+
+    println!("{}", result);
+
+    result
+    }
+
 }
 
 fn make_map() -> Map {
@@ -86,9 +139,9 @@ fn print_all(entities: &[Entity], map: &Map) {
     println!("{}", s);
 
     // draw all objects in the list
-   //for object in entities {
-   //    object.draw(&mut s);
-   // }  
+   for object in entities {
+       object.draw(&mut s);
+   }  
 }
 
 fn prompt_and_handle_keys(player: &mut Entity, map: &Map) -> bool {
@@ -144,8 +197,8 @@ fn main() {
        //super unintuitive but avoids use of moved variable error
        let player = &mut entities[0];
        game_quit = prompt_and_handle_keys(player, &map);
-       println!("player x {:?}", player.x);
-       println!("player y {:?}", player.y);
+       //println!("player x {:?}", player.x);
+       //println!("player y {:?}", player.y);
 	
     }
 
