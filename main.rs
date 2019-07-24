@@ -57,9 +57,24 @@ impl Entity {
     }
 
     //dark magic in order to draw entity on top of map
-    pub fn draw(&self, map: &mut String) -> String {
+    pub fn draw(&self, map: &mut String, seen: &HashSet<(i32, i32)>) -> String {
+ 	let mut result = String::with_capacity(map.len());
+	//do nothing if not in fov
+	if !seen.contains(&(self.x,self.y)) {
+		let lines = map.lines();
+	
+		for l in lines {
+		     result.push_str(l);
+		     //linebreak
+		     result.push('\n');
+		}
+        	return result
+		//doesn't work because we made map mutable :(	 
+		//return map 
+	}
+
 	// +1 added to self.y and self.x due to a weird print offset
-        let mut lines = map.lines();
+        let lines = map.lines();
 	let mut count_l = 0;
         let mut map_line=String::new();
 	//this gives string slices
@@ -73,10 +88,9 @@ impl Entity {
 	}
 	
 	// based on https://stackoverflow.com/questions/26544542/modifying-chars-in-a-string-by-index?noredirect=1&lq=1
-        let mut result = String::with_capacity(map.len());
         let mut count = 0;
 	count_l = 0;
-	let mut lines = map.lines();
+	let lines = map.lines();
 
 	for l in lines {
 	    count_l += 1;
@@ -159,7 +173,7 @@ fn print_all(entities: &[Entity], map: &Map, seen: &HashSet<(i32, i32)>) {
 
     // draw all objects in the list
     for object in entities {
-       s = object.draw(&mut s);
+       s = object.draw(&mut s, seen);
     }  
     println!("{}", s);
 }
@@ -205,7 +219,9 @@ fn main() {
     let mut game_quit: bool = false;
 
     let player = Entity::new(2,2, '@');
-    let mut entities = [player];
+    let npc = Entity::new(6,6, 'k');
+    let npc2 = Entity::new(7,7, 'k');
+    let mut entities = [player, npc, npc2];
     let map = make_map();
     let mut seen_set = HashSet::new();
     //init fov
