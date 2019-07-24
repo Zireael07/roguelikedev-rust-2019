@@ -38,22 +38,23 @@ struct Entity {
     x: i32,
     y: i32,
     char: char,
+    name: String,
+    blocks: bool,
+    alive: bool,
 }
 
 impl Entity {
-    pub fn new(x: i32, y: i32, char: char) -> Self {
-        Entity { x, y, char }
+    pub fn new(x: i32, y: i32, char: char, name: &str) -> Self {
+        Entity { x, y, char, name: name.into(), blocks: true, alive: true }
     }
 
-    pub fn move_by(&mut self, dx: i32, dy: i32, map: &Map) {
-	if !map[(self.x + dx) as usize][(self.y + dy) as usize].blocked {
-		// move by the given amount
-		self.x += dx;
-		self.y += dy;
-	}
-	else {
-		println!("Attempted move into blocked tile!");
-	}
+    //shorthand for ease of use
+    pub fn pos(&self) -> (i32, i32) {
+        (self.x, self.y)
+    }
+    pub fn set_pos(&mut self, x: i32, y: i32) {
+        self.x = x;
+        self.y = y;
     }
 
     //dark magic in order to draw entity on top of map
@@ -125,6 +126,29 @@ impl Entity {
     }
 }
 
+fn move_by(id: usize, dx: i32, dy: i32, map: &Map, entities: &mut [Entity]) {
+	let (x,y) = entities[id].pos();
+	if !map[(x + dx) as usize][(y + dy) as usize].blocked {
+        if !get_entities_at_tile(x + dx, y + dy, entities){
+		    // move by the given amount
+		   entities[id].set_pos(x + dx, y + dy)
+        }
+        else {
+            //combat!
+            println!("Trying to move into npc!");
+        }
+	}
+	else {
+		println!("Attempted move into blocked tile!");
+	}
+}
+
+fn get_entities_at_tile(x: i32, y: i32, entities: &[Entity]) -> bool {
+    entities.iter().any(|e| {
+        e.blocks && e.pos() == (x, y)
+    })
+}
+
 fn make_map() -> Map {
     // fill map with "unblocked" tiles
     let mut map = vec![vec![Tile::empty(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
@@ -178,8 +202,9 @@ fn print_all(entities: &[Entity], map: &Map, seen: &HashSet<(i32, i32)>) {
     println!("{}", s);
 }
 
-fn prompt_and_handle_keys(player: &mut Entity, map: &Map) -> bool {
+fn prompt_and_handle_keys(map: &Map, entities: & mut [Entity]) -> PlayerAction {
        use std::io::{stdin,stdout,Write};
+       use PlayerAction::*;
 
        let mut s=String::new();
        print!("Please enter command: ");
@@ -196,31 +221,41 @@ fn prompt_and_handle_keys(player: &mut Entity, map: &Map) -> bool {
        //key handling
        if s.trim() == "Q" {
            println!("Quit!");
-           return true; //exit
+           return Exit; //exit
        }
        if s.trim() == "w" {
-           player.move_by(-1, 0, map);
+           move_by(0, -1, 0, map, entities);
+	   return TookTurn;
        }
        if s.trim() == "e" {
-           player.move_by(1,0, map);
+           move_by(0, 1, 0, map, entities);
+	   return TookTurn;
        }
        if s.trim() == "n" {
-           player.move_by(0,-1, map);
+           move_by(0, 0,-1, map, entities);
+	   return TookTurn;
        }
        if s.trim() == "s" {
-           player.move_by(0,1, map);
+           move_by(0, 0,1, map, entities);
+	   return TookTurn;
        }
        //default return
-       false
+       DidntTakeTurn
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PlayerAction {
+    TookTurn,
+    DidntTakeTurn,
+    Exit,
+}
 
 fn main() {
     let mut game_quit: bool = false;
 
-    let player = Entity::new(2,2, '@');
-    let npc = Entity::new(6,6, 'k');
-    let npc2 = Entity::new(7,7, 'k');
+    let player = Entity::new(2,2, '@', "Player");
+    let npc = Entity::new(6,6, 'k', "kobold");
+    let npc2 = Entity::new(7,7, 'k', "kobold");
     let mut entities = [player, npc, npc2];
     let map = make_map();
     let mut seen_set = HashSet::new();
@@ -240,9 +275,9 @@ fn main() {
        //render the map
        print_all(&mut entities, &map, &seen_set);
        //super unintuitive but avoids use of moved variable error
-       let player = &mut entities[0];
+       //let player = &mut entities[0];
 	
-       game_quit = prompt_and_handle_keys(player, &map);
+       let player_action = prompt_and_handle_keys(&map, &mut entities);
        //println!("player x {:?}", player.x);
        //println!("player y {:?}", player.y);
         //fov
@@ -250,7 +285,7 @@ fn main() {
 	seen_set.clear();
 	//call function from other file
 	ppfov::ppfov(
-      	(player.x, player.y),
+      	(entities[0].x, entities[0].y),
       	5,
       	|x, y| if x > 0 && x < 20 && y > 0 && y < 20 { map[x as usize][y as usize].block_sight } else { true },
       	|x, y| {
@@ -259,7 +294,20 @@ fn main() {
     	);
 	
 	//println!("{:?}", seen_set);
-	
+	if player_action == PlayerAction::Exit {
+            break;
+        }
+
+        // let monsters take their turn
+        if entities[0].alive && player_action != PlayerAction::DidntTakeTurn {
+            for e in &entities {
+                // only if e is not player
+		// pointer comparison, not the usual != value equality
+                if (e as *const _) != (&entities[0] as *const _) {
+                    println!("The {} growls!", e.name);
+                }
+            }
+        }
     }
 
     println!("You quit!");
