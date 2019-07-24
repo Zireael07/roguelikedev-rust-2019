@@ -71,6 +71,7 @@ impl Entity {
 		break;
 	     }
 	}
+	
 	// based on https://stackoverflow.com/questions/26544542/modifying-chars-in-a-string-by-index?noredirect=1&lq=1
         let mut result = String::with_capacity(map.len());
         let mut count = 0;
@@ -104,16 +105,26 @@ impl Entity {
 	}
 
 
-    println!("{}", result);
+    //println!("{}", result);
 
     result
     }
-
 }
 
 fn make_map() -> Map {
     // fill map with "unblocked" tiles
     let mut map = vec![vec![Tile::empty(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
+
+    //place walls around
+    //Rust is weird, ranges are inclusive at the beginning but exclusive at the end
+    for x in 0 ..MAP_WIDTH{
+    	map[x as usize][0] = Tile::wall();
+	map[x as usize][(MAP_WIDTH-1) as usize] = Tile::wall();
+    }
+    for y in 0 ..MAP_HEIGHT{
+    	map[0][y as usize] = Tile::wall();
+	map[(MAP_WIDTH-1) as usize][y as usize] = Tile::wall();
+    }
 
     // place two pillars to test the map
     map[10][12] = Tile::wall();
@@ -122,31 +133,35 @@ fn make_map() -> Map {
     map
 }
 
-fn print_all(entities: &[Entity], map: &Map) {
+fn print_all(entities: &[Entity], map: &Map, seen: &HashSet<(i32, i32)>) {
     let mut s=String::new();
     
     // go through all tiles, and print
     for y in 0..MAP_HEIGHT {
         for x in 0..MAP_WIDTH {
-            let wall = map[x as usize][y as usize].block_sight;
-            if wall {
-		s.push('#');
-                //con.set_char_background(x, y, COLOR_DARK_WALL, BackgroundFlag::Set);
-            } else {
-		s.push('.');
-                //con.set_char_background(x, y, COLOR_DARK_GROUND, BackgroundFlag::Set);
-            }
+	    if seen.contains(&(x,y)) {
+            	let wall = map[x as usize][y as usize].block_sight;
+            	if wall {
+		    s.push('#');
+                } else {
+		    s.push('.');
+            	}
+	    }
+	    else {
+		s.push(' ');
+	    }
         }
 	//our row ended, add a line break
 	s.push('\n');
     }
 
-    println!("{}", s);
+    //println!("{}", s);
 
     // draw all objects in the list
-   for object in entities {
-       object.draw(&mut s);
-   }  
+    for object in entities {
+       s = object.draw(&mut s);
+    }  
+    println!("{}", s);
 }
 
 fn prompt_and_handle_keys(player: &mut Entity, map: &Map) -> bool {
@@ -189,24 +204,34 @@ fn prompt_and_handle_keys(player: &mut Entity, map: &Map) -> bool {
 fn main() {
     let mut game_quit: bool = false;
 
-    let player = Entity::new(0,0, '@');
+    let player = Entity::new(2,2, '@');
     let mut entities = [player];
     let map = make_map();
-
+    let mut seen_set = HashSet::new();
+    //init fov
+    ppfov::ppfov(
+	(2,2),
+	5,
+	|x, y| if x > 0 && x < 20 && y > 0 && y < 20 { map[x as usize][y as usize].block_sight } else { true },
+      	|x, y| {
+        	seen_set.insert((x, y));
+      	   },
+    	);
 
     while ! game_quit {
        //the order is important, we can't prompt first and draw second because that results in 
 	//borrowing twice for some reason
        //render the map
-       print_all(&mut entities, &map);
+       print_all(&mut entities, &map, &seen_set);
        //super unintuitive but avoids use of moved variable error
        let player = &mut entities[0];
+	
        game_quit = prompt_and_handle_keys(player, &map);
        //println!("player x {:?}", player.x);
        //println!("player y {:?}", player.y);
-	
-	//fov
-	let mut seen_set = HashSet::new();
+        //fov
+	//clear set
+	seen_set.clear();
 	//call function from other file
 	ppfov::ppfov(
       	(player.x, player.y),
@@ -216,7 +241,9 @@ fn main() {
         	seen_set.insert((x, y));
       	   },
     	);
-	println!("{:?}", seen_set);
+	
+	//println!("{:?}", seen_set);
+	
     }
 
     println!("You quit!");
