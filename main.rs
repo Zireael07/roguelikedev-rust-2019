@@ -314,6 +314,29 @@ fn make_map() -> Map {
     map
 }
 
+fn draw_bar(name: &str, total_width: i32, value: i32, max: i32) -> String {
+    let mut s=String::from(name);
+    let bar_width = (value as f32 / max as f32 * total_width as f32) as i32;
+
+    for _i in 0..bar_width+1{
+	s.push_str("\u{2588}")
+    }
+
+    if total_width > bar_width{
+	let diff = total_width - bar_width;
+	for _i in 0..diff+1 {
+	    s.push(' ');
+	}
+    }
+
+    s.push(' ');
+    //deref
+    s.push_str(&value.to_string());
+    s.push_str("\\");
+    s.push_str(&max.to_string());
+    return s;
+}
+
 fn print_all(entities: &[Entity], map: &Map, seen: &HashSet<(i32, i32)>) {
     let mut s=String::new();
     
@@ -440,12 +463,17 @@ fn main() {
 	//borrowing twice for some reason
        //render the map
        print_all(&mut entities, &map, &seen_set);
+	// draw basic infos
+        let hp = entities[0].fighter.map_or(0, |f| f.hp);
+        let max_hp = entities[0].fighter.map_or(0, |f| f.max_hp);
+	println!("{}", draw_bar("HP: ", 4, hp, max_hp));
        //super unintuitive but avoids use of moved variable error
        //let player = &mut entities[0];
 	
        let player_action = prompt_and_handle_keys(&map, &mut entities);
        //println!("player x {:?}", player.x);
        //println!("player y {:?}", player.y);
+       //println!("\u{2588}");
         //fov
 	//clear set
 	seen_set.clear();
