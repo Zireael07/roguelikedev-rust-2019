@@ -79,6 +79,7 @@ impl Entity {
         if let Some(fighter) = self.fighter {
             if fighter.hp <= 0 {
                 self.alive = false;
+		fighter.on_death.callback(self);
             }
         }
     }
@@ -233,6 +234,43 @@ struct Fighter {
     hp: i32,
     defense: i32,
     attack: i32,
+    on_death: DeathCallback,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum DeathCallback {
+    Player,
+    Monster,
+}
+
+impl DeathCallback {
+    fn callback(self, object: &mut Entity) {
+        use DeathCallback::*;
+        let callback: fn(&mut Entity) = match self {
+            Player => player_death,
+            Monster => monster_death,
+        };
+        callback(object);
+    }
+}
+
+fn player_death(player: &mut Entity) {
+    // the game ended!
+    println!("You died!");
+
+    // for added effect, transform the player into a corpse!
+    player.char = '%';
+}
+
+fn monster_death(monster: &mut Entity) {
+    // transform it into a nasty corpse! it doesn't block, can't be
+    // attacked and doesn't move
+    println!("{} is dead!", monster.name);
+    monster.char = '%';
+    monster.blocks = false;
+    monster.fighter = None;
+    monster.ai = None;
+    monster.name = format!("remains of {}", monster.name);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -364,6 +402,7 @@ fn main() {
         hp: 30,
         defense: 2,
         attack: 5,
+	on_death: DeathCallback::Player,
     });
     let mut npc = Entity::new(6,6, 'k', "kobold");
     npc.fighter = Some(Fighter {
@@ -371,6 +410,7 @@ fn main() {
                     hp: 10,
                     defense: 0,
                     attack: 3,
+		    on_death: DeathCallback::Monster,
                 });
     npc.ai = Some(Ai);
     let mut npc2 = Entity::new(7,7, 'k', "kobold");
@@ -379,6 +419,7 @@ fn main() {
                     hp: 10,
                     defense: 0,
                     attack: 3,
+		    on_death: DeathCallback::Monster,
                 });
     npc2.ai = Some(Ai);
     let mut entities = [player, npc, npc2];
