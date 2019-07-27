@@ -14,4 +14,13 @@ Due to having to rely on stdin and stdout solely, I implemented player control a
 Figured out how to print a map to stdout thanks to my Python implementation. Drawing a player on top of that involved arcane string manipulation that I will be very happy to be rid of once I am no longer so horribly limited (terminal emulator > stdout any day of the week - even when discounting color support, it at least lets you draw glyphs at arbitrary positions)
 
 ## Week 3
-Cribbed a FOV implementation from Lokathor's tutorial and made it print the whole visible set to stdout. For obvious reasons (no color support) I don't believe I will be making the "explored" part of the usual unexplored-visible-explored triad.
+Cribbed a FOV implementation from Lokathor's tutorial. For obvious reasons (no color support) I don't believe I will be making the "explored" part of the usual unexplored-visible-explored triad.
+
+## Week 4
+Since we're printing all of the stuff to stdout, we don't need a dedicated message log structure. And luckily Rust's default font has a Unicode block character built in, so I could approximate the health bar using it.
+
+## Week 5
+Inventory basically reuses existing code for input/output, nothing unusual there. I skipped the scrolls/targeting for now, as I have no clue how to represent targeting given the limitations of stdout.
+
+## Week 6
+Save/load is a hard skip for now, due to no cargo support we can't use serde for now (that will be rectified once I am at my own dev machine).
