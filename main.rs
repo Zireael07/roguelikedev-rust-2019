@@ -337,6 +337,74 @@ fn make_map() -> Map {
     map
 }
 
+
+//GUI
+fn menu<T: AsRef<str>>(header: &str, options: &[T]) -> Option<usize> {
+    assert!(
+        options.len() <= 26,
+        "Cannot have a menu with more than 26 options."
+    );
+
+    // calculate total height for the header (after auto-wrap) and one line per option
+    let header_height = 1;
+    let _height = options.len() as i32 + header_height;
+    //print header
+    println!("{}", header);
+
+    // print all the options
+    for (index, option_text) in options.iter().enumerate() {
+        let menu_letter = (b'a' + index as u8) as char;
+        let text = println!("({}) {}", menu_letter, option_text.as_ref());
+    }
+
+    // convert the ASCII code to an index; if it corresponds to an option, return it Option<usize>
+       use std::io::{stdin,stdout,Write};
+       use PlayerAction::*;
+
+       let mut s=String::new();
+       print!("Please enter letter: ");
+       let _=stdout().flush();
+       stdin().read_line(&mut s).expect("Did not enter a correct letter");
+       if let Some('\n')=s.chars().next_back() {
+	   s.pop();
+       }
+       if let Some('\r')=s.chars().next_back() {
+	   s.pop();
+       }
+       println!("You typed: {}",s);
+       //lots of dark magic here, thanks Rust for making it difficult to get chars out of a string
+       let c = s[0..].chars().next().unwrap();
+       let index = c as usize - 'a' as usize;
+       //println!("Index is: {}", index);
+       if index < options.len() {
+            Some(index)
+       } else {
+            None
+       }
+}
+
+fn inventory_menu(inventory: &[Entity], header: &str) -> Option<usize> {
+    // show a menu with each item of the inventory as an option
+    let options = if inventory.len() == 0 {
+        vec!["Inventory is empty.".into()]
+    } else {
+        inventory.iter().map(|item| item.name.clone()).collect()
+    };
+
+    //menu(header, &options);
+
+    let inventory_index = menu(header, &options);
+
+    // if an item was chosen, return it
+    if inventory.len() > 0 {
+	//pretty print
+	println!("Inv index: {:?}", inventory_index);
+        inventory_index
+    } else {
+        None
+    }
+}
+
 fn draw_bar(name: &str, total_width: i32, value: i32, max: i32) -> String {
     let mut s=String::from(name);
     let bar_width = (value as f32 / max as f32 * total_width as f32) as i32;
@@ -438,7 +506,14 @@ fn prompt_and_handle_keys(map: &Map, entities: & mut Vec<Entity>, inventory: &mu
 		return TookTurn;
            }
            //return DidntTakeTurn;
-       }	
+       }
+       if s.trim() == "i" {
+    	   // show the inventory
+           inventory_menu(
+           inventory,
+           "Press the key next to an item to use it, or any other to cancel.\n");
+           return DidntTakeTurn;
+       }
        //default return
        DidntTakeTurn
 }
