@@ -171,6 +171,16 @@ impl Entity {
 
     result
     }
+
+    /// heal by the given amount, without going over the maximum
+    pub fn heal(&mut self, amount: i32) {
+        if let Some(ref mut fighter) = self.fighter {
+            fighter.hp += amount;
+            if fighter.hp > fighter.max_hp {
+                fighter.hp = fighter.max_hp;
+            }
+        }
+    }
 }
 
 /// Mutably borrow two *separate* elements from the given slice.
@@ -296,6 +306,50 @@ fn ai_take_turn(monster_id: usize, map: &Map, entities: &mut [Entity], seen: &Ha
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Item {
     Heal, //item type for now
+}
+
+enum UseResult {
+    UsedUp,
+    Cancelled,
+}
+
+fn use_item(
+    inventory_id: usize,
+    inventory: &mut Vec<Entity>,
+    entities: &mut [Entity],
+) {
+    use Item::*;
+    // just call the "use_function" if it is defined
+    if let Some(item) = inventory[inventory_id].item {
+        let on_use = match item {
+            Heal => cast_heal,
+        };
+        match on_use(inventory_id, entities) {
+            UseResult::UsedUp => {
+                // destroy after use, unless it was cancelled for some reason
+                inventory.remove(inventory_id);
+            }
+            UseResult::Cancelled => {
+                println!("Cancelled");
+            }
+        }
+    } else {
+        println!("The {} cannot be used.", inventory[inventory_id].name);
+    }
+}
+
+fn cast_heal(_inventory_id: usize, entities: &mut [Entity]) -> UseResult {
+    // heal the player
+    if let Some(fighter) = entities[0].fighter {
+        if fighter.hp == fighter.max_hp {
+            println!("You are already at full health.");
+            return UseResult::Cancelled;
+        }
+        println!("Your wounds start to feel better!");
+        entities[0].heal(4);
+        return UseResult::UsedUp;
+    }
+    UseResult::Cancelled
 }
 
 /// add to the player's inventory and remove from the map
@@ -509,9 +563,12 @@ fn prompt_and_handle_keys(map: &Map, entities: & mut Vec<Entity>, inventory: &mu
        }
        if s.trim() == "i" {
     	   // show the inventory
-           inventory_menu(
+           let inventory_index = inventory_menu(
            inventory,
            "Press the key next to an item to use it, or any other to cancel.\n");
+           if let Some(inventory_index) = inventory_index {
+           	use_item(inventory_index, inventory, entities);
+           }
            return DidntTakeTurn;
        }
        //default return
