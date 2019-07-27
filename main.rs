@@ -44,12 +44,13 @@ struct Entity {
     alive: bool,
     fighter: Option<Fighter>,
     ai: Option<Ai>,
+    item: Option<Item>,
 }
 
 impl Entity {
     pub fn new(x: i32, y: i32, char: char, name: &str) -> Self {
         Entity { x, y, char, name: name.into(), blocks: true, alive: true, fighter: None,
-            ai: None, }
+            ai: None, item: None }
     }
 
     //shorthand for ease of use
@@ -292,6 +293,28 @@ fn ai_take_turn(monster_id: usize, map: &Map, entities: &mut [Entity], seen: &Ha
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Item {
+    Heal, //item type for now
+}
+
+/// add to the player's inventory and remove from the map
+fn pick_item_up(
+    object_id: usize,
+    entities: &mut Vec<Entity>,
+    inventory: &mut Vec<Entity>,
+) {
+    if inventory.len() >= 26 {
+	//println! is effectively equal to format!
+        println!("Your inventory is full, cannot pick up {}.",
+                entities[object_id].name);
+    } else {
+        let item = entities.swap_remove(object_id);
+        println!("You picked up a {}!", item.name);
+        inventory.push(item);
+    }
+}
+
 fn make_map() -> Map {
     // fill map with "unblocked" tiles
     let mut map = vec![vec![Tile::empty(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
@@ -368,7 +391,7 @@ fn print_all(entities: &[Entity], map: &Map, seen: &HashSet<(i32, i32)>) {
     println!("{}", s);
 }
 
-fn prompt_and_handle_keys(map: &Map, entities: & mut [Entity]) -> PlayerAction {
+fn prompt_and_handle_keys(map: &Map, entities: & mut Vec<Entity>, inventory: &mut Vec<Entity>) -> PlayerAction {
        use std::io::{stdin,stdout,Write};
        use PlayerAction::*;
 
@@ -405,6 +428,17 @@ fn prompt_and_handle_keys(map: &Map, entities: & mut [Entity]) -> PlayerAction {
            move_by(0, 0,1, map, entities);
 	   return TookTurn;
        }
+       if s.trim() == "g" {
+	   // pick up an item
+    	   let item_id = entities
+           .iter()
+           .position(|e| e.pos() == entities[0].pos() && e.item.is_some());
+           if let Some(item_id) = item_id {
+        	pick_item_up(item_id, entities, inventory);
+		return TookTurn;
+           }
+           //return DidntTakeTurn;
+       }	
        //default return
        DidntTakeTurn
 }
@@ -445,7 +479,9 @@ fn main() {
 		    on_death: DeathCallback::Monster,
                 });
     npc2.ai = Some(Ai);
-    let mut entities = [player, npc, npc2];
+    let mut object = Entity::new(2, 5, '!', "healing potion");
+    object.item = Some(Item::Heal);
+    let mut entities = vec![player, npc, npc2, object];
     let map = make_map();
     let mut seen_set = HashSet::new();
     //init fov
@@ -457,6 +493,8 @@ fn main() {
         	seen_set.insert((x, y));
       	   },
     	);
+
+    let mut inventory = vec![];
 
     while ! game_quit {
        //the order is important, we can't prompt first and draw second because that results in 
@@ -470,7 +508,7 @@ fn main() {
        //super unintuitive but avoids use of moved variable error
        //let player = &mut entities[0];
 	
-       let player_action = prompt_and_handle_keys(&map, &mut entities);
+       let player_action = prompt_and_handle_keys(&map, &mut entities, &mut inventory);
        //println!("player x {:?}", player.x);
        //println!("player y {:?}", player.y);
        //println!("\u{2588}");
