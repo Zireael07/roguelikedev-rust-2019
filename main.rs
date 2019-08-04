@@ -1,11 +1,19 @@
+// external crate
+use rand::Rng;
+
+#[macro_use]
+extern crate serde_derive;
+
 // std
 use std::collections::hash_set::*;
 use std::cmp; //for splitting
 
-mod ppfov;
+//for save/load
+use std::io::{Read, Write};
+use std::fs::File;
+use std::error::Error;
 
-// external crate
-use rand::Rng;
+mod ppfov;
 
 // size of the map
 const MAP_WIDTH: i32 = 20;
@@ -14,7 +22,7 @@ const MAP_HEIGHT: i32 = 20;
 type Map = Vec<Vec<Tile>>;
 
 /// A tile of the map and its properties
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct Tile {
     blocked: bool,
     block_sight: bool,
@@ -38,6 +46,7 @@ impl Tile {
 
 
 // This is a generic entity: the player, a monster, an item, the stairs...
+#[derive(Serialize, Deserialize)]
 struct Entity {
     x: i32,
     y: i32,
@@ -242,7 +251,7 @@ fn move_towards(id: usize, target_x: i32, target_y: i32, map: &Map, entities: &m
 
 //components
 // combat-related properties and methods (monster, player, NPC).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 struct Fighter {
     max_hp: i32,
     hp: i32,
@@ -251,7 +260,7 @@ struct Fighter {
     on_death: DeathCallback,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 enum DeathCallback {
     Player,
     Monster,
@@ -287,7 +296,7 @@ fn monster_death(monster: &mut Entity) {
     monster.name = format!("remains of {}", monster.name);
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 struct Ai;
 
 fn ai_take_turn(monster_id: usize, map: &Map, entities: &mut [Entity], seen: &HashSet<(i32, i32)>) {
@@ -306,7 +315,7 @@ fn ai_take_turn(monster_id: usize, map: &Map, entities: &mut [Entity], seen: &Ha
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 enum Item {
     Heal, //item type for now
 }
@@ -415,7 +424,7 @@ fn menu<T: AsRef<str>>(header: &str, options: &[T]) -> Option<usize> {
     }
 
     // convert the ASCII code to an index; if it corresponds to an option, return it Option<usize>
-       use std::io::{stdin,stdout,Write};
+       use std::io::{stdin,stdout};
        use PlayerAction::*;
 
        let mut s=String::new();
@@ -516,8 +525,8 @@ fn print_all(entities: &[Entity], map: &Map, seen: &HashSet<(i32, i32)>) {
     println!("{}", s);
 }
 
-fn prompt_and_handle_keys(map: &Map, entities: & mut Vec<Entity>, inventory: &mut Vec<Entity>) -> PlayerAction {
-       use std::io::{stdin,stdout,Write};
+fn prompt_and_handle_keys(game: &mut Game, entities: & mut Vec<Entity>) -> PlayerAction {
+       use std::io::{stdin,stdout};
        use PlayerAction::*;
 
        let mut s=String::new();
@@ -538,19 +547,19 @@ fn prompt_and_handle_keys(map: &Map, entities: & mut Vec<Entity>, inventory: &mu
            return Exit; //exit
        }
        if s.trim() == "w" {
-           move_by(0, -1, 0, map, entities);
-	   return TookTurn;
+           move_by(0, -1, 0, &game.map, entities);
+	        return TookTurn;
        }
        if s.trim() == "e" {
-           move_by(0, 1, 0, map, entities);
+           move_by(0, 1, 0, &game.map, entities);
 	   return TookTurn;
        }
        if s.trim() == "n" {
-           move_by(0, 0,-1, map, entities);
+           move_by(0, 0,-1, &game.map, entities);
 	   return TookTurn;
        }
        if s.trim() == "s" {
-           move_by(0, 0,1, map, entities);
+           move_by(0, 0,1, &game.map, entities);
 	   return TookTurn;
        }
        if s.trim() == "g" {
@@ -559,7 +568,7 @@ fn prompt_and_handle_keys(map: &Map, entities: & mut Vec<Entity>, inventory: &mu
            .iter()
            .position(|e| e.pos() == entities[0].pos() && e.item.is_some());
            if let Some(item_id) = item_id {
-        	pick_item_up(item_id, entities, inventory);
+        	pick_item_up(item_id, entities, &mut game.inventory);
 		return TookTurn;
            }
            //return DidntTakeTurn;
@@ -567,10 +576,10 @@ fn prompt_and_handle_keys(map: &Map, entities: & mut Vec<Entity>, inventory: &mu
        if s.trim() == "i" {
     	   // show the inventory
            let inventory_index = inventory_menu(
-           inventory,
+           &game.inventory,
            "Press the key next to an item to use it, or any other to cancel.\n");
            if let Some(inventory_index) = inventory_index {
-           	use_item(inventory_index, inventory, entities);
+           	use_item(inventory_index, &mut game.inventory, entities);
            }
            return DidntTakeTurn;
        }
@@ -585,10 +594,47 @@ enum PlayerAction {
     Exit,
 }
 
+#[derive(Serialize, Deserialize)]
 struct Game {
     map: Map,
     inventory: Vec<Entity>,
 }
+
+fn main_menu() -> Option<(Vec<Entity>, Game)>{
+    use std::io::{stdin,stdout};
+
+    let mut s=String::new();
+
+    print!("1) New game");
+    print!("2) Load game");
+
+    print!("Please enter command: ");
+    let _=stdout().flush();
+    stdin().read_line(&mut s).expect("Did not enter a correct command");
+    if let Some('\n')=s.chars().next_back() {
+	   s.pop();
+    }
+    if let Some('\r')=s.chars().next_back() {
+	   s.pop();
+    }
+    println!("You typed: {}",s);
+
+    //key handling
+    if s.trim() == "1" {
+        print!("New game!");
+        let (mut entities, mut game) = new_game();
+        return Some((entities, game));
+    }
+    if s.trim() == "2" {
+        print!("Load game!");
+        //load game
+        let (mut entities, mut game) = load_game().unwrap();
+        return Some((entities, game));
+    }
+    //default
+    None
+}
+
 
 fn new_game() -> (Vec<Entity>, Game) {
     //create player
@@ -649,10 +695,11 @@ fn play_game(entities: &mut Vec<Entity>, game: &mut Game, seen_set: &mut HashSet
        //super unintuitive but avoids use of moved variable error
        //let player = &mut entities[0];
 	
-       let player_action = prompt_and_handle_keys(&game.map, entities, &mut game.inventory);
+       let player_action = prompt_and_handle_keys(game, entities);
        //println!("player x {:?}", player.x);
        //println!("player y {:?}", player.y);
        //println!("\u{2588}");
+
         //fov
 	    //clear set
 	    seen_set.clear();
@@ -668,6 +715,8 @@ fn play_game(entities: &mut Vec<Entity>, game: &mut Game, seen_set: &mut HashSet
 	
 	    //println!("{:?}", seen_set);
 	    if player_action == PlayerAction::Exit {
+            //save game when quitting
+            save_game(entities, game);
             break;
         }
 
@@ -675,6 +724,7 @@ fn play_game(entities: &mut Vec<Entity>, game: &mut Game, seen_set: &mut HashSet
         if entities[0].alive && player_action != PlayerAction::DidntTakeTurn {
             for id in 0..entities.len() {
                 if entities[id].ai.is_some() {
+                    //println!("Taking turn...");
                     ai_take_turn(id, &game.map, entities, &seen_set);
                 }
             }
@@ -684,25 +734,52 @@ fn play_game(entities: &mut Vec<Entity>, game: &mut Game, seen_set: &mut HashSet
     println!("You quit!");
 }
 
+//save/load
+fn save_game(entities: &[Entity], game: &Game) -> Result<(), Box<Error>> {
+    let save_data = serde_json::to_string(&(entities, game))?;
+    let mut file = File::create("savegame")?;
+    file.write_all(save_data.as_bytes())?;
+    Ok(())
+}
+
+fn load_game() -> Result<(Vec<Entity>, Game), Box<Error>> {
+    let mut json_save_state = String::new();
+    let mut file = File::open("savegame")?;
+    file.read_to_string(&mut json_save_state)?;
+    let result = serde_json::from_str::<(Vec<Entity>, Game)>(&json_save_state)?;
+    Ok(result)
+}
 
 fn main() {
     let mut game_quit: bool = false;
 
+    let data = main_menu();
+    match data {
+        None => {
+            //quit because we went wrong
+            game_quit = true;
+        }
+        Some(data) => {
+            //unpack tuple
+            let (mut entities, mut game) = data;
+            let mut seen_set = HashSet::new();
+            //init fov
+            ppfov::ppfov(
+	        (2,2),
+	        5,
+	        |x, y| if x > 0 && x < 20 && y > 0 && y < 20 {game.map[x as usize][y as usize].block_sight } else { true },
+      	    |x, y| {
+        	    seen_set.insert((x, y));
+      	    },
+    	    );
+
+            play_game(&mut entities, &mut game, &mut seen_set, game_quit);
+        }
+    }
+
     //unpack a tuple
-    let (mut entities, mut game) = new_game();
+    //let (mut entities, mut game) = new_game();
 
-    let mut seen_set = HashSet::new();
-    //init fov
-    ppfov::ppfov(
-	(2,2),
-	5,
-	|x, y| if x > 0 && x < 20 && y > 0 && y < 20 {game.map[x as usize][y as usize].block_sight } else { true },
-      	|x, y| {
-        	seen_set.insert((x, y));
-      	   },
-    	);
-
-    play_game(&mut entities, &mut game, &mut seen_set, game_quit);
 
 
 }

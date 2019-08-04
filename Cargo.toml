@@ -6,6 +6,9 @@ edition = "2018"
 
 [dependencies]
 rand = "0.3.9"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
 
 [[bin]]
 name = "roguelikedev-rust-2019"
