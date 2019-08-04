@@ -4,6 +4,9 @@ use std::cmp; //for splitting
 
 mod ppfov;
 
+// external crate
+use rand::Rng;
+
 // size of the map
 const MAP_WIDTH: i32 = 20;
 const MAP_HEIGHT: i32 = 20;
@@ -585,7 +588,7 @@ enum PlayerAction {
 fn main() {
     let mut game_quit: bool = false;
 
-    let mut player = Entity::new(2,2, '@', "Player");
+    let mut player = Entity::new(1,1, '@', "Player");
     player.fighter = Some(Fighter {
         max_hp: 30,
         hp: 30,
@@ -593,7 +596,9 @@ fn main() {
         attack: 5,
 	on_death: DeathCallback::Player,
     });
-    let mut npc = Entity::new(6,6, 'k', "kobold");
+    let x = rand::thread_rng().gen_range(1,18);
+    let y = rand::thread_rng().gen_range(1,18);
+    let mut npc = Entity::new(x,y, 'k', "kobold");
     npc.fighter = Some(Fighter {
                     max_hp: 10,
                     hp: 10,
@@ -602,7 +607,9 @@ fn main() {
 		    on_death: DeathCallback::Monster,
                 });
     npc.ai = Some(Ai);
-    let mut npc2 = Entity::new(7,7, 'k', "kobold");
+    let x = rand::thread_rng().gen_range(1,18);
+    let y = rand::thread_rng().gen_range(1,18);
+    let mut npc2 = Entity::new(x,y, 'k', "kobold");
     npc2.fighter = Some(Fighter {
                     max_hp: 10,
                     hp: 10,
