@@ -297,7 +297,9 @@ fn monster_death(monster: &mut Entity) {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-struct Ai;
+enum Ai{
+    Normal
+}
 
 fn ai_take_turn(monster_id: usize, map: &Map, entities: &mut [Entity], seen: &HashSet<(i32, i32)>) {
     // a basic monster takes its turn. If you can see it, it can see you
@@ -658,7 +660,7 @@ fn new_game() -> (Vec<Entity>, Game) {
                     attack: 3,
 		    on_death: DeathCallback::Monster,
                 });
-    npc.ai = Some(Ai);
+    npc.ai = Some(Ai::Normal);
     let x = rand::thread_rng().gen_range(1,18);
     let y = rand::thread_rng().gen_range(1,18);
     let mut npc2 = Entity::new(x,y, 'k', "kobold");
@@ -669,7 +671,7 @@ fn new_game() -> (Vec<Entity>, Game) {
                     attack: 3,
 		    on_death: DeathCallback::Monster,
                 });
-    npc2.ai = Some(Ai);
+    npc2.ai = Some(Ai::Normal);
     let mut object = Entity::new(2, 5, '!', "healing potion");
     object.item = Some(Item::Heal);
     let mut entities = vec![player, npc, npc2, object];
