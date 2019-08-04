@@ -585,9 +585,13 @@ enum PlayerAction {
     Exit,
 }
 
-fn main() {
-    let mut game_quit: bool = false;
+struct Game {
+    map: Map,
+    inventory: Vec<Entity>,
+}
 
+fn new_game() -> (Vec<Entity>, Game) {
+    //create player
     let mut player = Entity::new(1,1, '@', "Player");
     player.fighter = Some(Fighter {
         max_hp: 30,
@@ -596,6 +600,8 @@ fn main() {
         attack: 5,
 	on_death: DeathCallback::Player,
     });
+
+    //create NPCs
     let x = rand::thread_rng().gen_range(1,18);
     let y = rand::thread_rng().gen_range(1,18);
     let mut npc = Entity::new(x,y, 'k', "kobold");
@@ -621,51 +627,47 @@ fn main() {
     let mut object = Entity::new(2, 5, '!', "healing potion");
     object.item = Some(Item::Heal);
     let mut entities = vec![player, npc, npc2, object];
-    let map = make_map();
-    let mut seen_set = HashSet::new();
-    //init fov
-    ppfov::ppfov(
-	(2,2),
-	5,
-	|x, y| if x > 0 && x < 20 && y > 0 && y < 20 { map[x as usize][y as usize].block_sight } else { true },
-      	|x, y| {
-        	seen_set.insert((x, y));
-      	   },
-    	);
 
-    let mut inventory = vec![];
+    let mut game = Game { 
+        map: make_map(),
+        inventory: vec![]
+        };
 
+    (entities, game)
+}
+
+fn play_game(entities: &mut Vec<Entity>, game: &mut Game, seen_set: &mut HashSet<(i32, i32)>, game_quit: bool) {
     while ! game_quit {
        //the order is important, we can't prompt first and draw second because that results in 
 	//borrowing twice for some reason
        //render the map
-       print_all(&mut entities, &map, &seen_set);
-	// draw basic infos
+       print_all(&entities, &game.map, &seen_set);
+	    // draw basic infos
         let hp = entities[0].fighter.map_or(0, |f| f.hp);
         let max_hp = entities[0].fighter.map_or(0, |f| f.max_hp);
-	println!("{}", draw_bar("HP: ", 4, hp, max_hp));
+	    println!("{}", draw_bar("HP: ", 4, hp, max_hp));
        //super unintuitive but avoids use of moved variable error
        //let player = &mut entities[0];
 	
-       let player_action = prompt_and_handle_keys(&map, &mut entities, &mut inventory);
+       let player_action = prompt_and_handle_keys(&game.map, entities, &mut game.inventory);
        //println!("player x {:?}", player.x);
        //println!("player y {:?}", player.y);
        //println!("\u{2588}");
         //fov
-	//clear set
-	seen_set.clear();
-	//call function from other file
-	ppfov::ppfov(
+	    //clear set
+	    seen_set.clear();
+	    //call function from other file
+	    ppfov::ppfov(
       	(entities[0].x, entities[0].y),
       	5,
-      	|x, y| if x > 0 && x < 20 && y > 0 && y < 20 { map[x as usize][y as usize].block_sight } else { true },
+      	|x, y| if x > 0 && x < 20 && y > 0 && y < 20 { game.map[x as usize][y as usize].block_sight } else { true },
       	|x, y| {
         	seen_set.insert((x, y));
       	   },
     	);
 	
-	//println!("{:?}", seen_set);
-	if player_action == PlayerAction::Exit {
+	    //println!("{:?}", seen_set);
+	    if player_action == PlayerAction::Exit {
             break;
         }
 
@@ -673,13 +675,34 @@ fn main() {
         if entities[0].alive && player_action != PlayerAction::DidntTakeTurn {
             for id in 0..entities.len() {
                 if entities[id].ai.is_some() {
-                    ai_take_turn(id, &map, &mut entities, &seen_set);
+                    ai_take_turn(id, &game.map, entities, &seen_set);
                 }
             }
         }
     }
 
     println!("You quit!");
+}
+
+
+fn main() {
+    let mut game_quit: bool = false;
+
+    //unpack a tuple
+    let (mut entities, mut game) = new_game();
+
+    let mut seen_set = HashSet::new();
+    //init fov
+    ppfov::ppfov(
+	(2,2),
+	5,
+	|x, y| if x > 0 && x < 20 && y > 0 && y < 20 {game.map[x as usize][y as usize].block_sight } else { true },
+      	|x, y| {
+        	seen_set.insert((x, y));
+      	   },
+    	);
+
+    play_game(&mut entities, &mut game, &mut seen_set, game_quit);
 
 
 }
