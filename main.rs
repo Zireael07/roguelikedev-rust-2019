@@ -26,6 +26,7 @@ type Map = Vec<Vec<Tile>>;
 struct Tile {
     blocked: bool,
     block_sight: bool,
+    stairs: bool,
 }
 
 impl Tile {
@@ -33,6 +34,7 @@ impl Tile {
         Tile {
             blocked: false,
             block_sight: false,
+            stairs: false,
         }
     }
 
@@ -40,6 +42,15 @@ impl Tile {
         Tile {
             blocked: true,
             block_sight: true,
+            stairs: false,
+        }
+    }
+
+    pub fn stairs() -> Self {
+        Tile {
+            blocked: false,
+            block_sight: false,
+            stairs: true,
         }
     }
 }
@@ -402,6 +413,12 @@ fn make_map() -> Map {
     map[10][12] = Tile::wall();
     map[5][12] = Tile::wall();
 
+    //stairs in random place
+    let x = rand::thread_rng().gen_range(1,18);
+    let y = rand::thread_rng().gen_range(1,18);
+
+    map[x][y] = Tile::stairs();
+
     map
 }
 
@@ -503,11 +520,15 @@ fn print_all(entities: &[Entity], map: &Map, seen: &HashSet<(i32, i32)>) {
     for y in 0..MAP_HEIGHT {
         for x in 0..MAP_WIDTH {
 	    if seen.contains(&(x,y)) {
+                let stairs = map[x as usize][y as usize].stairs;
+                if stairs {
+                    s.push('>');
+                }
             	let wall = map[x as usize][y as usize].block_sight;
             	if wall {
-		    s.push('#');
+		            s.push('#');
                 } else {
-		    s.push('.');
+		            s.push('.');
             	}
 	    }
 	    else {
@@ -564,6 +585,19 @@ fn prompt_and_handle_keys(game: &mut Game, entities: & mut Vec<Entity>) -> Playe
            move_by(0, 0,1, &game.map, entities);
 	   return TookTurn;
        }
+       if s.trim() == ">" || s.trim() == "<" {
+           //tuple unpacking
+           let (x, y) = entities[0].pos();
+           if game.map[x as usize][y as usize].stairs {
+               //new level
+               next_level(entities, game);
+               return DidntTakeTurn;
+           }
+           else
+           {
+               return DidntTakeTurn;
+           }
+       }
        if s.trim() == "g" {
 	   // pick up an item
     	   let item_id = entities
@@ -600,7 +634,45 @@ enum PlayerAction {
 struct Game {
     map: Map,
     inventory: Vec<Entity>,
+    dungeon_level: u32,
 }
+
+fn next_level(entities: &mut Vec<Entity>, game: &mut Game){
+    print!("You descend deeper in the dungeons...");
+    game.dungeon_level += 1;
+    //make the new level
+    game.map = make_map();
+    
+    // Player is the first element, remove everything else
+    entities.truncate(1);
+
+    //create NPCs
+    let x = rand::thread_rng().gen_range(1,18);
+    let y = rand::thread_rng().gen_range(1,18);
+    let mut npc = Entity::new(x,y, 'k', "kobold");
+    npc.fighter = Some(Fighter {
+                    max_hp: 10,
+                    hp: 10,
+                    defense: 0,
+                    attack: 3,
+		    on_death: DeathCallback::Monster,
+                });
+    npc.ai = Some(Ai::Normal);
+    let x = rand::thread_rng().gen_range(1,18);
+    let y = rand::thread_rng().gen_range(1,18);
+    let mut npc2 = Entity::new(x,y, 'k', "kobold");
+    npc2.fighter = Some(Fighter {
+                    max_hp: 10,
+                    hp: 10,
+                    defense: 0,
+                    attack: 3,
+		    on_death: DeathCallback::Monster,
+                });
+    npc2.ai = Some(Ai::Normal);
+
+
+}
+
 
 fn main_menu() -> Option<(Vec<Entity>, Game)>{
     use std::io::{stdin,stdout};
@@ -678,7 +750,8 @@ fn new_game() -> (Vec<Entity>, Game) {
 
     let mut game = Game { 
         map: make_map(),
-        inventory: vec![]
+        inventory: vec![],
+        dungeon_level: 1,
         };
 
     (entities, game)
@@ -694,6 +767,7 @@ fn play_game(entities: &mut Vec<Entity>, game: &mut Game, seen_set: &mut HashSet
         let hp = entities[0].fighter.map_or(0, |f| f.hp);
         let max_hp = entities[0].fighter.map_or(0, |f| f.max_hp);
 	    println!("{}", draw_bar("HP: ", 4, hp, max_hp));
+        println!("Dungeon level: {}", game.dungeon_level);
        //super unintuitive but avoids use of moved variable error
        //let player = &mut entities[0];
 	
