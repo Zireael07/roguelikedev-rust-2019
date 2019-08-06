@@ -109,9 +109,10 @@ impl Entity {
         }
     }
 
-    pub fn attack(&mut self, target: &mut Entity) {
-        // should be randomized but we can't use rand crate :(
-        let damage = 2;
+    pub fn attack(&mut self, target: &mut Entity, game: &mut Game) {
+        let mut damage = self.get_damage(game);
+        //random factor
+        damage += rand::thread_rng().gen_range(-2,4);
         if damage > 0 {
             // make the target take some damage
             println!(
@@ -206,6 +207,18 @@ impl Entity {
         }
     }
 
+    //alas, no equivalent of Python properties here, we have to do it by hand
+    pub fn get_damage(&self, game: &Game) -> i32 {
+        let base_damage = self.fighter.map_or(0, |f| f.base_damage);
+        let bonus: i32 = self
+            .get_all_equipped(game)
+            .iter()
+            .map(|e| e.damage_bonus)
+            .sum();
+        base_damage + bonus
+    }
+
+    //equipment system
     pub fn equip(&mut self) {
         //paranoia
         if self.item.is_none() {
@@ -239,6 +252,19 @@ impl Entity {
         }
     }
 
+    /// returns a list of equipped items
+    pub fn get_all_equipped(&self, game: &Game) -> Vec<Equipment> {
+        if self.name == "player" {
+            game.inventory
+                .iter()
+                .filter(|item| item.equipment.map_or(false, |e| e.equipped))
+                .map(|item| item.equipment.unwrap())
+                .collect()
+        } else {
+            vec![] // other entities have no equipment
+        }
+    }
+
 }
 
 /// Mutably borrow two *separate* elements from the given slice.
@@ -255,9 +281,9 @@ fn mut_two<T>(first_index: usize, second_index: usize, items: &mut [T]) -> (&mut
 }
 
 //these are global functions, not Entity's because uh, Rust borrow weirdness prevents us from using entity as first parameter and entities as the last...
-fn move_by(id: usize, dx: i32, dy: i32, map: &Map, entities: &mut [Entity]) {
+fn move_by(id: usize, dx: i32, dy: i32, entities: &mut [Entity], game: &mut Game) {
 	let (x,y) = entities[id].pos();
-	if !map[(x + dx) as usize][(y + dy) as usize].blocked {
+	if !game.map[(x + dx) as usize][(y + dy) as usize].blocked {
 	    // try to find an attackable entity there
             let target_id = entities
             .iter()
@@ -268,11 +294,11 @@ fn move_by(id: usize, dx: i32, dy: i32, map: &Map, entities: &mut [Entity]) {
 		    // move by the given amount
 		   entities[id].set_pos(x + dx, y + dy)
         	}
-               	Some(target_id) => {
+        Some(target_id) => {
             //combat!
             //println!("Trying to move into npc!");
 	    let (player, target) = mut_two(0, target_id, entities);
-	    player.attack(target);
+	    player.attack(target, game);
         	}
 	    }
 	}
@@ -282,7 +308,7 @@ fn move_by(id: usize, dx: i32, dy: i32, map: &Map, entities: &mut [Entity]) {
 }
 
 
-fn move_towards(id: usize, target_x: i32, target_y: i32, map: &Map, entities: &mut [Entity]) {
+fn move_towards(id: usize, target_x: i32, target_y: i32, entities: &mut [Entity], game: &mut Game) {
     // vector from this object to the target, and distance
     let dx = target_x - entities[id].x;
     let dy = target_y - entities[id].y;
@@ -292,7 +318,7 @@ fn move_towards(id: usize, target_x: i32, target_y: i32, map: &Map, entities: &m
     // convert to integer so the movement is restricted to the map grid
     let dx = (dx as f32 / distance).round() as i32;
     let dy = (dy as f32 / distance).round() as i32;
-    move_by(id, dx, dy, map, entities);
+    move_by(id, dx, dy, entities, game);
 }
 
 //components
@@ -302,7 +328,7 @@ struct Fighter {
     max_hp: i32,
     hp: i32,
     defense: i32,
-    attack: i32,
+    base_damage: i32,
     on_death: DeathCallback,
 }
 
@@ -347,18 +373,18 @@ enum Ai{
     Normal
 }
 
-fn ai_take_turn(monster_id: usize, map: &Map, entities: &mut [Entity], seen: &HashSet<(i32, i32)>) {
+fn ai_take_turn(monster_id: usize, entities: &mut [Entity], seen: &HashSet<(i32, i32)>, game: &mut Game) {
     // a basic monster takes its turn. If you can see it, it can see you
     let (monster_x, monster_y) = entities[monster_id].pos();
     if seen.contains(&(monster_x, monster_y)) {
         if entities[monster_id].distance_to(&entities[0]) >= 2.0 {
             // move towards player if far away
             let (player_x, player_y) = entities[0].pos();
-            move_towards(monster_id, player_x, player_y, map, entities);
+            move_towards(monster_id, player_x, player_y, entities, game);
         } else if entities[0].fighter.map_or(false, |f| f.hp > 0) {
             // close enough, attack! (if the player is still alive.)
             let (monster, player) = mut_two(monster_id, 0, entities);
-            monster.attack(player);
+            monster.attack(player, game);
         }
     }
 }
@@ -374,6 +400,7 @@ enum Item {
 struct Equipment {
     slot: Slot,
     equipped: bool,
+    damage_bonus: i32, //allows negative values
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -679,19 +706,19 @@ fn prompt_and_handle_keys(game: &mut Game, entities: & mut Vec<Entity>) -> Playe
            return Exit; //exit
        }
        if s.trim() == "w" {
-           move_by(0, -1, 0, &game.map, entities);
+           move_by(0, -1, 0, entities, game);
 	        return TookTurn;
        }
        if s.trim() == "e" {
-           move_by(0, 1, 0, &game.map, entities);
+           move_by(0, 1, 0, entities, game);
 	   return TookTurn;
        }
        if s.trim() == "n" {
-           move_by(0, 0,-1, &game.map, entities);
+           move_by(0, 0, -1, entities, game);
 	   return TookTurn;
        }
        if s.trim() == "s" {
-           move_by(0, 0,1, &game.map, entities);
+           move_by(0, 0, 1,entities, game);
 	   return TookTurn;
        }
        if s.trim() == ">" || s.trim() == "<" {
@@ -763,7 +790,7 @@ fn next_level(entities: &mut Vec<Entity>, game: &mut Game){
                     max_hp: 10,
                     hp: 10,
                     defense: 0,
-                    attack: 3,
+                    base_damage: 4,
 		    on_death: DeathCallback::Monster,
                 });
     npc.ai = Some(Ai::Normal);
@@ -774,7 +801,7 @@ fn next_level(entities: &mut Vec<Entity>, game: &mut Game){
                     max_hp: 10,
                     hp: 10,
                     defense: 0,
-                    attack: 3,
+                    base_damage: 4,
 		    on_death: DeathCallback::Monster,
                 });
     npc2.ai = Some(Ai::Normal);
@@ -826,7 +853,7 @@ fn new_game() -> (Vec<Entity>, Game) {
         max_hp: 30,
         hp: 30,
         defense: 2,
-        attack: 5,
+        base_damage: 5,
 	on_death: DeathCallback::Player,
     });
 
@@ -838,7 +865,7 @@ fn new_game() -> (Vec<Entity>, Game) {
                     max_hp: 10,
                     hp: 10,
                     defense: 0,
-                    attack: 3,
+                    base_damage: 3,
 		    on_death: DeathCallback::Monster,
                 });
     npc.ai = Some(Ai::Normal);
@@ -849,7 +876,7 @@ fn new_game() -> (Vec<Entity>, Game) {
                     max_hp: 10,
                     hp: 10,
                     defense: 0,
-                    attack: 3,
+                    base_damage: 3,
 		    on_death: DeathCallback::Monster,
                 });
     npc2.ai = Some(Ai::Normal);
@@ -859,7 +886,7 @@ fn new_game() -> (Vec<Entity>, Game) {
     // create a sword
     let mut sword = Entity::new(2, 2, '/', "sword");
     sword.item = Some(Item::Equipment);
-    sword.equipment = Some(Equipment{equipped: false, slot: Slot::RightHand});
+    sword.equipment = Some(Equipment{equipped: false, slot: Slot::RightHand, damage_bonus:1});
 
     let mut entities = vec![player, npc, npc2, object, sword];
 
@@ -916,7 +943,7 @@ fn play_game(entities: &mut Vec<Entity>, game: &mut Game, seen_set: &mut HashSet
             for id in 0..entities.len() {
                 if entities[id].ai.is_some() {
                     //println!("Taking turn...");
-                    ai_take_turn(id, &game.map, entities, &seen_set);
+                    ai_take_turn(id, entities, &seen_set, game);
                 }
             }
         }
