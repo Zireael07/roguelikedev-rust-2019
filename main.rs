@@ -57,7 +57,7 @@ impl Tile {
 
 
 // This is a generic entity: the player, a monster, an item, the stairs...
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Entity {
     x: i32,
     y: i32,
@@ -68,12 +68,13 @@ struct Entity {
     fighter: Option<Fighter>,
     ai: Option<Ai>,
     item: Option<Item>,
+    equipment: Option<Equipment>,
 }
 
 impl Entity {
     pub fn new(x: i32, y: i32, char: char, name: &str) -> Self {
         Entity { x, y, char, name: name.into(), blocks: true, alive: true, fighter: None,
-            ai: None, item: None }
+            ai: None, item: None, equipment: None }
     }
 
     //shorthand for ease of use
@@ -204,6 +205,40 @@ impl Entity {
             }
         }
     }
+
+    pub fn equip(&mut self) {
+        //paranoia
+        if self.item.is_none() {
+            print!("Can't equip something which is not an item");
+            return;
+        };
+        if let Some(ref mut equipment) = self.equipment {
+            if !equipment.equipped {
+                equipment.equipped = true;
+                println!("Equipped {} in slot {:?}.", self.name, equipment.slot);
+            }
+        } else {
+            println!("Can't equip {:?} because it's not an Equipment.", self);
+        }
+
+    }
+
+    pub fn take_off(&mut self){
+        //paranoia
+        if self.item.is_none() {
+            print!("Can't take off something which is not an item");
+            return;
+        };
+        if let Some(ref mut equipment) = self.equipment {
+            if equipment.equipped {
+                equipment.equipped = false;
+                println!("Took off {} in slot {:?}.", self.name, equipment.slot);
+            }
+        } else {
+            println!("Can't take off {:?} because it's not an Equipment.", self);
+        }
+    }
+
 }
 
 /// Mutably borrow two *separate* elements from the given slice.
@@ -331,10 +366,26 @@ fn ai_take_turn(monster_id: usize, map: &Map, entities: &mut [Entity], seen: &Ha
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 enum Item {
     Heal, //item type for now
+    Equipment, //generic that enables wearing/taking off
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+/// An object that can be equipped, yielding bonuses.
+struct Equipment {
+    slot: Slot,
+    equipped: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+enum Slot {
+    LeftHand,
+    RightHand,
+    Head,
 }
 
 enum UseResult {
     UsedUp,
+    UsedAndKept,
     Cancelled,
 }
 
@@ -348,12 +399,14 @@ fn use_item(
     if let Some(item) = inventory[inventory_id].item {
         let on_use = match item {
             Heal => cast_heal,
+            Equipment => toggle_equipment,
         };
-        match on_use(inventory_id, entities) {
+        match on_use(inventory_id, entities, inventory) {
             UseResult::UsedUp => {
                 // destroy after use, unless it was cancelled for some reason
                 inventory.remove(inventory_id);
-            }
+            },
+            UseResult::UsedAndKept => {}, // do nothing
             UseResult::Cancelled => {
                 println!("Cancelled");
             }
@@ -363,7 +416,7 @@ fn use_item(
     }
 }
 
-fn cast_heal(_inventory_id: usize, entities: &mut [Entity]) -> UseResult {
+fn cast_heal(_inventory_id: usize, entities: &mut [Entity], inventory: &mut [Entity]) -> UseResult {
     // heal the player
     if let Some(fighter) = entities[0].fighter {
         if fighter.hp == fighter.max_hp {
@@ -376,6 +429,28 @@ fn cast_heal(_inventory_id: usize, entities: &mut [Entity]) -> UseResult {
     }
     UseResult::Cancelled
 }
+
+fn toggle_equipment(
+    inventory_id: usize,
+    entities: &mut [Entity],
+    inventory: &mut [Entity]) -> UseResult {
+        let equipment = match inventory[inventory_id].equipment {
+        Some(equipment) => equipment,
+        None => return UseResult::Cancelled,
+    };
+    if equipment.equipped {
+        //note: if we were using a game.log (as is the case in a usual roguelike),
+        // game is already borrowed here (in game.inventory)
+        inventory[inventory_id].take_off();
+    } else {
+        // if the slot is already being used, take off whatever is there first
+        if let Some(current) = get_equipped_in_slot(equipment.slot, &inventory) {
+            inventory[current].take_off();
+        }
+        inventory[inventory_id].equip();
+    }
+    UseResult::UsedAndKept
+    }
 
 /// add to the player's inventory and remove from the map
 fn pick_item_up(
@@ -392,6 +467,19 @@ fn pick_item_up(
         println!("You picked up a {}!", item.name);
         inventory.push(item);
     }
+}
+
+fn get_equipped_in_slot(slot: Slot, inventory: &[Entity]) -> Option<usize> {
+    for (inventory_id, item) in inventory.iter().enumerate() {
+        if item
+            .equipment
+            .as_ref()
+            .map_or(false, |e| e.equipped && e.slot == slot)
+        {
+            return Some(inventory_id);
+        }
+    }
+    None
 }
 
 fn make_map() -> Map {
@@ -473,7 +561,18 @@ fn inventory_menu(inventory: &[Entity], header: &str) -> Option<usize> {
     let options = if inventory.len() == 0 {
         vec!["Inventory is empty.".into()]
     } else {
-        inventory.iter().map(|item| item.name.clone()).collect()
+        inventory
+        .iter()
+        .map(|item| {
+            // show additional information, in case it's equipped
+            match item.equipment {
+                Some(equipment) if equipment.equipped => {
+                    format!("{} (on {:?})", item.name, equipment.slot)
+                }
+                _ => item.name.clone(),
+            }
+        })
+        .collect()
     };
 
     //menu(header, &options);
@@ -746,7 +845,13 @@ fn new_game() -> (Vec<Entity>, Game) {
     npc2.ai = Some(Ai::Normal);
     let mut object = Entity::new(2, 5, '!', "healing potion");
     object.item = Some(Item::Heal);
-    let mut entities = vec![player, npc, npc2, object];
+
+    // create a sword
+    let mut sword = Entity::new(2, 2, '/', "sword");
+    sword.item = Some(Item::Equipment);
+    sword.equipment = Some(Equipment{equipped: false, slot: Slot::RightHand});
+
+    let mut entities = vec![player, npc, npc2, object, sword];
 
     let mut game = Game { 
         map: make_map(),
