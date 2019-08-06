@@ -215,7 +215,7 @@ impl Entity {
         if let Some(ref mut equipment) = self.equipment {
             if !equipment.equipped {
                 equipment.equipped = true;
-                println!("Equipped {} in slot {:?}.", self.name, equipment.slot);
+                println!("Equipped {} in slot {}.", self.name, equipment.slot);
             }
         } else {
             println!("Can't equip {:?} because it's not an Equipment.", self);
@@ -232,7 +232,7 @@ impl Entity {
         if let Some(ref mut equipment) = self.equipment {
             if equipment.equipped {
                 equipment.equipped = false;
-                println!("Took off {} in slot {:?}.", self.name, equipment.slot);
+                println!("Took off {} in slot {}.", self.name, equipment.slot);
             }
         } else {
             println!("Can't take off {:?} because it's not an Equipment.", self);
@@ -381,6 +381,16 @@ enum Slot {
     LeftHand,
     RightHand,
     Head,
+}
+
+impl std::fmt::Display for Slot {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match *self {
+            Slot::LeftHand => write!(f, "left hand"),
+            Slot::RightHand => write!(f, "right hand"),
+            Slot::Head => write!(f, "head"),
+        }
+    }
 }
 
 enum UseResult {
@@ -567,7 +577,7 @@ fn inventory_menu(inventory: &[Entity], header: &str) -> Option<usize> {
             // show additional information, in case it's equipped
             match item.equipment {
                 Some(equipment) if equipment.equipped => {
-                    format!("{} (on {:?})", item.name, equipment.slot)
+                    format!("{} (on {})", item.name, equipment.slot)
                 }
                 _ => item.name.clone(),
             }
